@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+
+set -e
+
+
+# check for root access
+if [[ $(id -u) != 0 ]]; then
+    echo "Please run setup as 'root'"
+    exit 1
+fi
+
+
+#================================================
+#    PACKAGE MANAGEMENT
+#================================================
+
+
+# remove unwanted packages
+echo -e "\nRemoving bloatware ..."
+
+dnf remove $(grep "^[^#]" bloatware)
+
+#================================================
+#    SYSTEM CONFIGURATION
+#================================================
+
+
+# set hostname if not already
+if [[ $HOSTNAME = fedora ]]; then
+  echo -e "\nChoose system hostname:"
+  read "> " HOST
+  hostnamectl set-hostname "$HOST"
+fi
+
+
+# update grub config
+if [[ -d /sys/firmware/efi ]]; then
+  grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg
+else
+  grub2-mkconfig -o /boot/grub2/grub.cfg
+fi
+
+
+# configure /etc/hosts file
+echo -e "\nConfiguring /etc/hosts ..."
+
+echo -e "127.0.0.1\tlocalhost ""$HOST""" > /etc/hosts
+if [[ $? -eq 0 ]]; then
+  echo "done"
+else
+  echo "Could not set 'hosts'"
+fi
+
+# configure local-sudo file
+echo -e "\nConfiguring local-sudo ..."
+
+sed -i "s|<user>|${USERNAME}|g" /etc/sudoers.d/local-sudo
+if [[ $? = 0 ]]; then
+  echo "done"
+else
+  echo "Could not set 'local-sudo'"
+fi
+
+# automate security patches
+echo -e "\nEnable DNF security updates ..."
+
+dnfcheck=$(dnf list firejail &> /dev/null)
+if [[ $dnfcheck -eq 0 ]]; then
+  systemctl enable --now dnf-automatic.timer
+else
+  echo "Could not enable 'dnf-automatic'"
+fi
+
+
